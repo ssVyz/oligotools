@@ -4,12 +4,12 @@ Handles running analysis tools and managing their outputs.
 """
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from datetime import datetime
 
-from domain.entities import Project, FileReference
+from domain.entities import Project, FileReference, FileCategory
 from domain.tools import BaseTool, ToolResult, get_available_tools, get_tool_by_id
 from domain import ToolError, ToolParameterError
 from data.exceptions import DataError
@@ -53,6 +53,7 @@ class GetProjectFastaFilesRequest:
     """Request to get FASTA files from project."""
     project: Project
     selected_files: Optional[List[str]] = None  # Pre-selected file names
+    required_categories: Optional[List[FileCategory]] = None  # Filter by categories
 
 
 @dataclass
@@ -60,6 +61,7 @@ class GetProjectFastaFilesResponse:
     """Response with project FASTA files."""
     fasta_files: List[FileReference]
     preselected_files: List[FileReference]
+    categorized_files: Dict[FileCategory, List[FileReference]] = field(default_factory=dict)
 
 
 class RunToolUseCase(BaseUseCase[RunToolRequest, RunToolResponse]):
@@ -134,7 +136,7 @@ class RunToolUseCase(BaseUseCase[RunToolRequest, RunToolResponse]):
             raise UseCaseError(f"Unexpected error running tool: {e}")
 
     def _execute_tool_with_resolved_paths(self, tool: BaseTool, input_files: List[FileReference],
-                                          parameters: Dict[str, Any], output_dir: str) -> ToolResult:
+                                        parameters: Dict[str, Any], output_dir: str) -> ToolResult:
         """Execute tool with resolved file paths."""
         # For primer overlap tool, implement the actual analysis logic here
         if isinstance(tool, type(get_tool_by_id('primer_overlap'))):
@@ -144,7 +146,7 @@ class RunToolUseCase(BaseUseCase[RunToolRequest, RunToolResponse]):
             return tool.execute(input_files, parameters, output_dir)
 
     def _execute_primer_overlap_tool(self, tool: BaseTool, input_files: List[FileReference],
-                                     parameters: Dict[str, Any], output_dir: str) -> ToolResult:
+                                   parameters: Dict[str, Any], output_dir: str) -> ToolResult:
         """Execute primer overlap analysis with actual BioPython implementation."""
         result = ToolResult(
             tool_id=tool.tool_id,
@@ -254,8 +256,8 @@ class RunToolUseCase(BaseUseCase[RunToolRequest, RunToolResponse]):
         }
 
     def _generate_primer_overlap_outputs(self, analysis_results: Dict[str, Any],
-                                         sequences: List, parameters: Dict[str, Any],
-                                         output_dir: str) -> List[str]:
+                                       sequences: List, parameters: Dict[str, Any],
+                                       output_dir: str) -> List[str]:
         """Generate output files for primer overlap analysis."""
         output_files = []
 
@@ -278,7 +280,7 @@ class RunToolUseCase(BaseUseCase[RunToolRequest, RunToolResponse]):
 
             for result in overlaps_sorted:
                 if (result['overlap_length'] != current_overlap or
-                        result['mismatches'] != current_mismatches):
+                    result['mismatches'] != current_mismatches):
                     current_overlap = result['overlap_length']
                     current_mismatches = result['mismatches']
 
@@ -297,15 +299,14 @@ class RunToolUseCase(BaseUseCase[RunToolRequest, RunToolResponse]):
         with open(csv_file, 'w') as f:
             f.write("Overlap_Length,Mismatches,Primer1_ID,Primer2_ID,Risk_Level,Primer1_3end,Primer2_3end_RC\n")
             for result in analysis_results['overlaps']:
-                f.write(
-                    f"{result['overlap_length']},{result['mismatches']},{result['primer1_id']},{result['primer2_id']},{result['risk_level']},{result['primer1_3end']},{result['primer2_3end_rc']}\n")
+                f.write(f"{result['overlap_length']},{result['mismatches']},{result['primer1_id']},{result['primer2_id']},{result['risk_level']},{result['primer1_3end']},{result['primer2_3end_rc']}\n")
 
         output_files.append(csv_file)
 
         return output_files
 
     def _import_results_to_project(self, project: Project, tool_result: ToolResult,
-                                   output_dir: str) -> List[FileReference]:
+                                 output_dir: str) -> List[FileReference]:
         """Import tool results back into the project."""
         imported_files = []
 
@@ -443,7 +444,7 @@ class GetProjectFastaFilesUseCase(BaseUseCase[GetProjectFastaFilesRequest, GetPr
             raise ValidationError("Project cannot be None")
 
     def execute(self, request: GetProjectFastaFilesRequest) -> GetProjectFastaFilesResponse:
-        """Get FASTA files from project."""
+        """Get FASTA files from project with optional category filtering."""
         # Get all files from project
         all_files = request.project.get_all_file_references()
 
@@ -454,6 +455,13 @@ class GetProjectFastaFilesUseCase(BaseUseCase[GetProjectFastaFilesRequest, GetPr
             if file_ref.file_type.lower() in fasta_extensions
         ]
 
+        # Apply category filtering if requested
+        if request.required_categories:
+            fasta_files = [
+                file_ref for file_ref in fasta_files
+                if file_ref.file_category in request.required_categories
+            ]
+
         # Find preselected files
         preselected_files = []
         if request.selected_files:
@@ -463,7 +471,16 @@ class GetProjectFastaFilesUseCase(BaseUseCase[GetProjectFastaFilesRequest, GetPr
                 if file_ref.name in selected_names
             ]
 
+        # Group files by category for UI display
+        categorized_files = {}
+        for file_ref in fasta_files:
+            category = file_ref.file_category
+            if category not in categorized_files:
+                categorized_files[category] = []
+            categorized_files[category].append(file_ref)
+
         return GetProjectFastaFilesResponse(
             fasta_files=fasta_files,
-            preselected_files=preselected_files
+            preselected_files=preselected_files,
+            categorized_files=categorized_files
         )

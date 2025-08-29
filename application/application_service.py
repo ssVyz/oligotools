@@ -19,6 +19,11 @@ from .use_cases import (
     MoveItemUseCase, MoveItemRequest,
     CopyFileUseCase, CopyFileRequest,
     DeleteItemUseCase, DeleteItemRequest,
+    RemoveFileFromProjectUseCase, RemoveFileFromProjectRequest,
+    RenameFileInProjectUseCase, RenameFileInProjectRequest,
+    MoveFileInProjectUseCase, MoveFileInProjectRequest,
+    SetFileCategoryUseCase, SetFileCategoryRequest,
+    GetFilesByCategoryUseCase, GetFilesByCategoryRequest,
     RunToolUseCase, RunToolRequest,
     GetAvailableToolsUseCase, GetAvailableToolsRequest,
     GetProjectFastaFilesUseCase, GetProjectFastaFilesRequest
@@ -56,6 +61,13 @@ class ApplicationService:
         self._get_available_tools_use_case = GetAvailableToolsUseCase(self.project_repository)
         self._get_project_fasta_files_use_case = GetProjectFastaFilesUseCase(self.project_repository)
 
+        # File management use cases
+        self._remove_file_from_project_use_case = RemoveFileFromProjectUseCase(self.project_repository)
+        self._rename_file_in_project_use_case = RenameFileInProjectUseCase(self.project_repository)
+        self._move_file_in_project_use_case = MoveFileInProjectUseCase(self.project_repository)
+        self._set_file_category_use_case = SetFileCategoryUseCase(self.project_repository)
+        self._get_files_by_category_use_case = GetFilesByCategoryUseCase(self.project_repository)
+
     # Project Management Operations
 
     def create_new_project(self, project_name: str, project_file_path: str, description: str = "") -> UseCaseResult:
@@ -83,6 +95,219 @@ class ApplicationService:
             self.project_modified = False
 
         return result
+
+    # Enhanced File Management Operations
+
+    def remove_file_from_project(self, folder_path: str, file_name: str) -> UseCaseResult:
+        """
+        Remove a file from the project (but not from disk).
+
+        Args:
+            folder_path: Path to the folder containing the file
+            file_name: Name of the file to remove
+
+        Returns:
+            UseCaseResult with removal results
+        """
+        if not self.current_project:
+            return UseCaseResult(
+                success=False,
+                error="No project is currently open"
+            )
+
+        request = RemoveFileFromProjectRequest(
+            project=self.current_project,
+            folder_path=folder_path,
+            file_name=file_name
+        )
+
+        result = self._remove_file_from_project_use_case.execute_safely(request)
+
+        if result.success:
+            self.project_modified = True
+
+        return result
+
+    def rename_file_in_project(self, folder_path: str, old_name: str, new_name: str) -> UseCaseResult:
+        """
+        Rename a file within the project.
+
+        Args:
+            folder_path: Path to the folder containing the file
+            old_name: Current name of the file
+            new_name: New name for the file
+
+        Returns:
+            UseCaseResult with rename results
+        """
+        if not self.current_project:
+            return UseCaseResult(
+                success=False,
+                error="No project is currently open"
+            )
+
+        request = RenameFileInProjectRequest(
+            project=self.current_project,
+            folder_path=folder_path,
+            file_name=old_name,
+            new_name=new_name
+        )
+
+        result = self._rename_file_in_project_use_case.execute_safely(request)
+
+        if result.success:
+            self.project_modified = True
+
+        return result
+
+    def move_file_in_project(self, source_path: str, file_name: str, dest_path: str, new_name: Optional[str] = None) -> UseCaseResult:
+        """
+        Move a file within the project.
+
+        Args:
+            source_path: Source folder path
+            file_name: Name of the file to move
+            dest_path: Destination folder path
+            new_name: Optional new name for the file
+
+        Returns:
+            UseCaseResult with move results
+        """
+        if not self.current_project:
+            return UseCaseResult(
+                success=False,
+                error="No project is currently open"
+            )
+
+        request = MoveFileInProjectRequest(
+            project=self.current_project,
+            folder_path=source_path,
+            file_name=file_name,
+            destination_folder_path=dest_path,
+            new_name=new_name
+        )
+
+        result = self._move_file_in_project_use_case.execute_safely(request)
+
+        if result.success:
+            self.project_modified = True
+
+        return result
+
+    def set_file_category(self, folder_path: str, file_name: str, category: str) -> UseCaseResult:
+        """
+        Set the category for a file.
+
+        Args:
+            folder_path: Path to the folder containing the file
+            file_name: Name of the file
+            category: New category for the file (as string)
+
+        Returns:
+            UseCaseResult with category change results
+        """
+        if not self.current_project:
+            return UseCaseResult(
+                success=False,
+                error="No project is currently open"
+            )
+
+        # Convert string to FileCategory enum
+        from domain import FileCategory
+        try:
+            file_category = FileCategory(category)
+        except ValueError:
+            return UseCaseResult(
+                success=False,
+                error=f"Invalid category: {category}"
+            )
+
+        request = SetFileCategoryRequest(
+            project=self.current_project,
+            folder_path=folder_path,
+            file_name=file_name,
+            category=file_category
+        )
+
+        result = self._set_file_category_use_case.execute_safely(request)
+
+        if result.success:
+            self.project_modified = True
+
+        return result
+
+    def get_files_by_category(self, categories: List[str], file_types: Optional[List[str]] = None) -> UseCaseResult:
+        """
+        Get files by category and optionally by file type.
+
+        Args:
+            categories: List of category names to match
+            file_types: Optional list of file types to match
+
+        Returns:
+            UseCaseResult with matching files
+        """
+        if not self.current_project:
+            return UseCaseResult(
+                success=False,
+                error="No project is currently open"
+            )
+
+        # Convert string categories to FileCategory enums
+        from domain import FileCategory
+        try:
+            file_categories = [FileCategory(cat) for cat in categories]
+        except ValueError as e:
+            return UseCaseResult(
+                success=False,
+                error=f"Invalid category: {e}"
+            )
+
+        request = GetFilesByCategoryRequest(
+            project=self.current_project,
+            categories=file_categories,
+            file_types=file_types
+        )
+
+        return self._get_files_by_category_use_case.execute_safely(request)
+
+    def get_project_fasta_files(self, selected_files: Optional[List[str]] = None,
+                               required_categories: Optional[List[str]] = None) -> UseCaseResult:
+        """
+        Get FASTA files from the current project with optional category filtering.
+
+        Args:
+            selected_files: Optional list of pre-selected file names
+            required_categories: Optional list of required categories
+
+        Returns:
+            UseCaseResult with FASTA files from the project
+        """
+        if not self.current_project:
+            return UseCaseResult(
+                success=False,
+                error="No project is currently open"
+            )
+
+        # Convert category strings to enums if provided
+        category_enums = None
+        if required_categories:
+            from domain import FileCategory
+            try:
+                category_enums = [FileCategory(cat) for cat in required_categories]
+            except ValueError as e:
+                return UseCaseResult(
+                    success=False,
+                    error=f"Invalid category: {e}"
+                )
+
+        request = GetProjectFastaFilesRequest(
+            project=self.current_project,
+            selected_files=selected_files,
+            required_categories=category_enums
+        )
+
+        return self._get_project_fasta_files_use_case.execute_safely(request)
 
     # Tool Operations
 

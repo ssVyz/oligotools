@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QProgressBar, QFrame
 )
 from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QColor
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
@@ -382,6 +383,11 @@ class BaseToolDialog(QDialog):
                 message += f"\n\nWarnings:\n" + "\n".join(tool_result.warnings)
 
             QMessageBox.information(self, "Tool Completed", message)
+
+            # Signal parent window to refresh project tree
+            if hasattr(self.parent(), '_update_ui_state'):
+                self.parent()._update_ui_state()
+
             self.accept()  # Close dialog on success
 
         else:

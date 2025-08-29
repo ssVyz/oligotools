@@ -15,6 +15,60 @@ from .exceptions import (
 )
 
 
+"""
+Domain entities for Oligotools
+Contains the core business objects and their rules.
+"""
+
+import uuid
+from datetime import datetime
+from typing import Dict, List, Optional, Union, Any
+from pathlib import Path
+from dataclasses import dataclass, field
+from enum import Enum
+
+from .exceptions import (
+    ProjectError, FolderError, FileReferenceError,
+    DuplicateNameError, ItemNotFoundError, InvalidPathError
+)
+
+
+class FileCategory(Enum):
+    """Enumeration of supported file categories for FASTA files."""
+    UNCATEGORIZED = "uncategorized"
+    OLIGOS = "oligos"
+    REFERENCE_SEQUENCE = "reference_sequence"
+    REFERENCE_SEQUENCE_LIST = "reference_sequence_list"
+
+    @classmethod
+    def get_display_name(cls, category) -> str:
+        """Get human-readable display name for category."""
+        display_names = {
+            cls.UNCATEGORIZED: "Uncategorized",
+            cls.OLIGOS: "Oligos",
+            cls.REFERENCE_SEQUENCE: "Reference Sequence",
+            cls.REFERENCE_SEQUENCE_LIST: "Reference Sequence List"
+        }
+        return display_names.get(category, category.value)
+
+    @classmethod
+    def get_display_color(cls, category) -> str:
+        """Get display color for category in UI."""
+        colors = {
+            cls.UNCATEGORIZED: "#000000",  # Black
+            cls.OLIGOS: "#27ae60",         # Green
+            cls.REFERENCE_SEQUENCE: "#3498db",      # Blue
+            cls.REFERENCE_SEQUENCE_LIST: "#9b59b6"  # Purple
+        }
+        return colors.get(category, "#000000")
+
+    @classmethod
+    def is_fasta_category(cls, category) -> bool:
+        """Check if category is applicable to FASTA files."""
+        fasta_categories = {cls.OLIGOS, cls.REFERENCE_SEQUENCE, cls.REFERENCE_SEQUENCE_LIST}
+        return category in fasta_categories
+
+
 @dataclass
 class FileReference:
     """Represents a reference to an imported file."""
@@ -24,6 +78,7 @@ class FileReference:
     original_path: str = ""
     relative_path: str = ""
     file_type: str = ""
+    file_category: FileCategory = FileCategory.UNCATEGORIZED
     size_bytes: int = 0
     imported_date: datetime = field(default_factory=datetime.now)
     last_modified: datetime = field(default_factory=datetime.now)
@@ -41,6 +96,46 @@ class FileReference:
         if not self.file_type:
             self.file_type = Path(self.name).suffix.lower().lstrip('.')
 
+        # Ensure file_category is FileCategory enum
+        if isinstance(self.file_category, str):
+            try:
+                self.file_category = FileCategory(self.file_category)
+            except ValueError:
+                self.file_category = FileCategory.UNCATEGORIZED
+
+    def set_category(self, category: Union[FileCategory, str]) -> None:
+        """Set the file category with validation."""
+        if isinstance(category, str):
+            try:
+                category = FileCategory(category)
+            except ValueError:
+                raise FileReferenceError(f"Invalid category: {category}")
+
+        # Validate category is appropriate for file type
+        if category != FileCategory.UNCATEGORIZED:
+            if not self.is_fasta_file() and FileCategory.is_fasta_category(category):
+                raise FileReferenceError(f"Category '{category.value}' is only applicable to FASTA files")
+
+        self.file_category = category
+        self.last_modified = datetime.now()
+
+    def is_fasta_file(self) -> bool:
+        """Check if this is a FASTA file based on file type."""
+        fasta_extensions = ['fasta', 'fa', 'fas', 'fna', 'ffn', 'faa', 'frn']
+        return self.file_type.lower() in fasta_extensions
+
+    def get_category_display_name(self) -> str:
+        """Get human-readable category name."""
+        return FileCategory.get_display_name(self.file_category)
+
+    def get_category_color(self) -> str:
+        """Get display color for this file's category."""
+        return FileCategory.get_display_color(self.file_category)
+
+    def is_compatible_with_tool_requirement(self, required_categories: List[FileCategory]) -> bool:
+        """Check if this file's category is compatible with tool requirements."""
+        return self.file_category in required_categories
+
     def update_metadata(self, **kwargs):
         """Update file metadata."""
         self.metadata.update(kwargs)
@@ -54,6 +149,7 @@ class FileReference:
             'original_path': self.original_path,
             'relative_path': self.relative_path,
             'file_type': self.file_type,
+            'file_category': self.file_category.value,
             'size_bytes': self.size_bytes,
             'imported_date': self.imported_date.isoformat(),
             'last_modified': self.last_modified.isoformat(),
@@ -63,12 +159,21 @@ class FileReference:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'FileReference':
         """Create from dictionary (deserialization)."""
+        # Handle category conversion
+        category = data.get('file_category', FileCategory.UNCATEGORIZED.value)
+        if isinstance(category, str):
+            try:
+                category = FileCategory(category)
+            except ValueError:
+                category = FileCategory.UNCATEGORIZED
+
         file_ref = cls(
             id=data['id'],
             name=data['name'],
             original_path=data['original_path'],
             relative_path=data['relative_path'],
             file_type=data['file_type'],
+            file_category=category,
             size_bytes=data['size_bytes'],
             imported_date=datetime.fromisoformat(data['imported_date']),
             last_modified=datetime.fromisoformat(data['last_modified']),
@@ -173,8 +278,33 @@ class Folder:
 
         file_ref = self.files[old_name]
         file_ref.name = new_name
+        file_ref.last_modified = datetime.now()
         self.files[new_name] = file_ref
         del self.files[old_name]
+
+    def set_file_category(self, file_name: str, category: Union[FileCategory, str]) -> None:
+        """Set category for a file."""
+        if file_name not in self.files:
+            raise ItemNotFoundError(f"File '{file_name}' not found")
+
+        file_ref = self.files[file_name]
+        file_ref.set_category(category)
+
+    def get_files_by_category(self, categories: List[FileCategory]) -> List[FileReference]:
+        """Get files that match any of the specified categories."""
+        matching_files = []
+        for file_ref in self.files.values():
+            if file_ref.file_category in categories:
+                matching_files.append(file_ref)
+        return matching_files
+
+    def get_files_by_type(self, file_types: List[str]) -> List[FileReference]:
+        """Get files that match any of the specified file types."""
+        matching_files = []
+        for file_ref in self.files.values():
+            if file_ref.file_type.lower() in [ft.lower() for ft in file_types]:
+                matching_files.append(file_ref)
+        return matching_files
 
     def get_path_items(self) -> List[str]:
         """Get all item names (folders and files) in this folder."""
@@ -278,8 +408,177 @@ class Project:
 
         self.last_modified = datetime.now()
 
-    def copy_file(self, source_path: str, file_name: str, dest_path: str,
-                  new_name: Optional[str] = None) -> FileReference:
+    def remove_file_from_project(self, folder_path: str, file_name: str) -> FileReference:
+        """
+        Remove a file from the project (but not from disk).
+
+        Args:
+            folder_path: Path to the folder containing the file
+            file_name: Name of the file to remove
+
+        Returns:
+            FileReference of the removed file
+
+        Raises:
+            ItemNotFoundError: If folder or file not found
+        """
+        folder = self.get_folder_by_path(folder_path)
+        removed_file = folder.remove_file(file_name)
+        self.last_modified = datetime.now()
+        return removed_file
+
+    def rename_file_in_project(self, folder_path: str, old_name: str, new_name: str) -> None:
+        """
+        Rename a file within the project.
+
+        Args:
+            folder_path: Path to the folder containing the file
+            old_name: Current name of the file
+            new_name: New name for the file
+
+        Raises:
+            ItemNotFoundError: If folder or file not found
+            DuplicateNameError: If new name already exists
+        """
+        folder = self.get_folder_by_path(folder_path)
+        folder.rename_file(old_name, new_name)
+        self.last_modified = datetime.now()
+
+    def move_file_in_project(self, source_path: str, file_name: str, dest_path: str, new_name: Optional[str] = None) -> None:
+        """
+        Move a file from one folder to another within the project.
+
+        Args:
+            source_path: Source folder path
+            file_name: Name of the file to move
+            dest_path: Destination folder path
+            new_name: Optional new name for the file
+
+        Raises:
+            ItemNotFoundError: If source folder or file not found
+            DuplicateNameError: If target name already exists in destination
+        """
+        source_folder = self.get_folder_by_path(source_path)
+        dest_folder = self.get_folder_by_path(dest_path)
+
+        # Remove from source
+        file_ref = source_folder.remove_file(file_name)
+
+        # Rename if requested
+        if new_name and new_name != file_name:
+            file_ref.name = new_name
+            file_ref.last_modified = datetime.now()
+
+        # Add to destination
+        dest_folder.add_file(file_ref)
+        self.last_modified = datetime.now()
+
+    def set_file_category(self, folder_path: str, file_name: str, category: Union[FileCategory, str]) -> None:
+        """
+        Set the category for a file in the project.
+
+        Args:
+            folder_path: Path to the folder containing the file
+            file_name: Name of the file
+            category: New category for the file
+
+        Raises:
+            ItemNotFoundError: If folder or file not found
+            FileReferenceError: If category is invalid for file type
+        """
+        folder = self.get_folder_by_path(folder_path)
+        folder.set_file_category(file_name, category)
+        self.last_modified = datetime.now()
+
+    def get_files_by_category(self, categories: List[FileCategory], recursive: bool = True) -> List[FileReference]:
+        """
+        Get all files in the project that match any of the specified categories.
+
+        Args:
+            categories: List of categories to match
+            recursive: Whether to search recursively through all folders
+
+        Returns:
+            List of FileReference objects matching the criteria
+        """
+        def collect_files(folder: Folder) -> List[FileReference]:
+            files = folder.get_files_by_category(categories)
+            if recursive:
+                for subfolder in folder.subfolders.values():
+                    files.extend(collect_files(subfolder))
+            return files
+
+        return collect_files(self.root_folder)
+
+    def get_files_by_type_and_category(self, file_types: List[str], categories: List[FileCategory], recursive: bool = True) -> List[FileReference]:
+        """
+        Get files matching both type and category criteria.
+
+        Args:
+            file_types: List of file types to match (e.g., ['fasta', 'fa'])
+            categories: List of categories to match
+            recursive: Whether to search recursively
+
+        Returns:
+            List of FileReference objects matching both criteria
+        """
+        def collect_files(folder: Folder) -> List[FileReference]:
+            files = []
+            for file_ref in folder.files.values():
+                type_match = file_ref.file_type.lower() in [ft.lower() for ft in file_types]
+                category_match = file_ref.file_category in categories
+                if type_match and category_match:
+                    files.append(file_ref)
+
+            if recursive:
+                for subfolder in folder.subfolders.values():
+                    files.extend(collect_files(subfolder))
+            return files
+
+        return collect_files(self.root_folder)
+
+    def find_file_by_path(self, folder_path: str, file_name: str) -> Optional[FileReference]:
+        """
+        Find a specific file by its folder path and name.
+
+        Args:
+            folder_path: Path to the folder containing the file
+            file_name: Name of the file to find
+
+        Returns:
+            FileReference if found, None otherwise
+        """
+        try:
+            folder = self.get_folder_by_path(folder_path)
+            return folder.get_file(file_name)
+        except ItemNotFoundError:
+            return None
+
+    def copy_file(self, source_path: str, file_name: str, dest_path: str, new_name: Optional[str] = None) -> FileReference:
+        """Copy a file from source to destination path."""
+        source_folder = self.get_folder_by_path(source_path)
+        dest_folder = self.get_folder_by_path(dest_path)
+
+        if file_name not in source_folder.files:
+            raise ItemNotFoundError(f"File '{file_name}' not found")
+
+        original_file = source_folder.files[file_name]
+
+        # Create a copy with new ID
+        copied_file = FileReference(
+            name=new_name or file_name,
+            original_path=original_file.original_path,
+            relative_path=original_file.relative_path,
+            file_type=original_file.file_type,
+            file_category=original_file.file_category,  # Copy category too
+            size_bytes=original_file.size_bytes,
+            imported_date=original_file.imported_date,
+            metadata=original_file.metadata.copy()
+        )
+
+        dest_folder.add_file(copied_file)
+        self.last_modified = datetime.now()
+        return copied_file
         """Copy a file from source to destination path."""
         source_folder = self.get_folder_by_path(source_path)
         dest_folder = self.get_folder_by_path(dest_path)
@@ -322,7 +621,6 @@ class Project:
 
     def get_all_file_references(self) -> List[FileReference]:
         """Get all file references in the project recursively."""
-
         def collect_files(folder: Folder) -> List[FileReference]:
             files = list(folder.files.values())
             for subfolder in folder.subfolders.values():

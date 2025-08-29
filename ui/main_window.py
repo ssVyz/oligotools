@@ -7,27 +7,250 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QTreeWidget, QTreeWidgetItem, QTextEdit,
     QToolBar, QStatusBar, QLabel, QPushButton, QMenuBar,
-    QMenu, QMessageBox, QFileDialog, QInputDialog, QDialog
+    QMenu, QMessageBox, QFileDialog, QInputDialog, QDialog,
+    QApplication
 )
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QAction, QIcon
+from PySide6.QtCore import Qt, QSize, QPoint
+from PySide6.QtGui import QAction, QIcon, QColor, QCursor
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from application import ApplicationService
-from .dialogs import NewProjectDialog
+from domain import FileCategory
+from .dialogs import NewProjectDialog, FolderSelectionDialog
 from .tool_dialogs import PrimerOverlapToolDialog
 
 
 class ProjectTreeWidget(QTreeWidget):
-    """Custom tree widget for displaying project structure."""
+    """Custom tree widget for displaying project structure with context menus."""
 
-    def __init__(self):
+    def __init__(self, main_window):
         super().__init__()
+        self.main_window = main_window
         self.setHeaderLabel("Project file structure")
         self.setMinimumWidth(300)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
 
-        # Remove placeholder items - we'll populate this with real data
+    def _show_context_menu(self, position: QPoint):
+        """Show context menu for tree items."""
+        item = self.itemAt(position)
+        if not item:
+            return
+
+        # Check if this is a file item
+        file_ref = item.data(0, Qt.UserRole)
+
+        menu = QMenu(self)
+
+        if file_ref and hasattr(file_ref, 'file_type'):
+            # This is a file - show file-specific options
+            self._create_file_context_menu(menu, item, file_ref)
+        else:
+            # This is a folder - show folder-specific options
+            self._create_folder_context_menu(menu, item)
+
+        if menu.actions():  # Only show if there are actions
+            menu.exec(self.mapToGlobal(position))
+
+    def _create_file_context_menu(self, menu: QMenu, item: QTreeWidgetItem, file_ref):
+        """Create context menu for file items."""
+        # Category submenu (only for FASTA files)
+        if file_ref.is_fasta_file():
+            category_menu = QMenu("Set Category", menu)
+
+            current_category = file_ref.file_category
+
+            # Add category options
+            for category in [FileCategory.UNCATEGORIZED, FileCategory.OLIGOS,
+                           FileCategory.REFERENCE_SEQUENCE, FileCategory.REFERENCE_SEQUENCE_LIST]:
+                action = category_menu.addAction(FileCategory.get_display_name(category))
+                action.setCheckable(True)
+                action.setChecked(category == current_category)
+                action.triggered.connect(
+                    lambda checked, cat=category: self._set_file_category(item, file_ref, cat)
+                )
+
+            menu.addMenu(category_menu)
+            menu.addSeparator()
+
+        # File operations
+        rename_action = menu.addAction("Rename File")
+        rename_action.triggered.connect(lambda: self._rename_file(item, file_ref))
+
+        move_action = menu.addAction("Move to Folder...")
+        move_action.triggered.connect(lambda: self._move_file(item, file_ref))
+
+        menu.addSeparator()
+
+        remove_action = menu.addAction("Remove from Project")
+        remove_action.triggered.connect(lambda: self._remove_file_from_project(item, file_ref))
+
+    def _create_folder_context_menu(self, menu: QMenu, item: QTreeWidgetItem):
+        """Create context menu for folder items."""
+        create_folder_action = menu.addAction("Create Subfolder...")
+        create_folder_action.triggered.connect(lambda: self._create_subfolder(item))
+
+        import_action = menu.addAction("Import File Here...")
+        import_action.triggered.connect(lambda: self._import_file_to_folder(item))
+
+    def _set_file_category(self, item: QTreeWidgetItem, file_ref, category: FileCategory):
+        """Set category for a file."""
+        folder_path = self._get_item_path(item.parent()) if item.parent() else "Root"
+
+        result = self.main_window.app_service.set_file_category(
+            folder_path=folder_path,
+            file_name=file_ref.name,
+            category=category.value
+        )
+
+        if result.success:
+            # Update the item color
+            color = FileCategory.get_display_color(category)
+            item.setForeground(0, QColor(color))
+            self.main_window._show_success(result.data.success_message)
+            self.main_window._update_ui_state()
+        else:
+            self.main_window._show_error("Set Category Failed", result.error)
+
+    def _rename_file(self, item: QTreeWidgetItem, file_ref):
+        """Rename a file."""
+        folder_path = self._get_item_path(item.parent()) if item.parent() else "Root"
+
+        new_name, ok = QInputDialog.getText(
+            self, "Rename File",
+            f"Enter new name for '{file_ref.name}':",
+            text=file_ref.name
+        )
+
+        if ok and new_name.strip() and new_name.strip() != file_ref.name:
+            result = self.main_window.app_service.rename_file_in_project(
+                folder_path=folder_path,
+                old_name=file_ref.name,
+                new_name=new_name.strip()
+            )
+
+            if result.success:
+                self.main_window._show_success(result.data.success_message)
+                self.main_window._update_ui_state()
+            else:
+                self.main_window._show_error("Rename Failed", result.error)
+
+    def _move_file(self, item: QTreeWidgetItem, file_ref):
+        """Move a file to another folder."""
+        if not self.main_window.app_service.has_current_project():
+            return
+
+        project = self.main_window.app_service.get_current_project()
+
+        # Show folder selection dialog
+        dialog = FolderSelectionDialog(project, self)
+        if dialog.exec() == QDialog.Accepted:
+            source_path = self._get_item_path(item.parent()) if item.parent() else "Root"
+            dest_path = dialog.selected_folder_path
+
+            if source_path == dest_path:
+                QMessageBox.information(self, "Move File", "File is already in the selected folder.")
+                return
+
+            result = self.main_window.app_service.move_file_in_project(
+                source_path=source_path,
+                file_name=file_ref.name,
+                dest_path=dest_path
+            )
+
+            if result.success:
+                self.main_window._show_success(result.data.success_message)
+                self.main_window._update_ui_state()
+            else:
+                self.main_window._show_error("Move Failed", result.error)
+
+    def _remove_file_from_project(self, item: QTreeWidgetItem, file_ref):
+        """Remove a file from the project."""
+        reply = QMessageBox.question(
+            self, "Remove File from Project",
+            f"Remove '{file_ref.name}' from the project?\n\n"
+            "This will remove the file from the project database but keep the original file on disk.",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            folder_path = self._get_item_path(item.parent()) if item.parent() else "Root"
+
+            result = self.main_window.app_service.remove_file_from_project(
+                folder_path=folder_path,
+                file_name=file_ref.name
+            )
+
+            if result.success:
+                self.main_window._show_success(result.data.success_message)
+                self.main_window._update_ui_state()
+            else:
+                self.main_window._show_error("Remove Failed", result.error)
+
+    def _create_subfolder(self, item: QTreeWidgetItem):
+        """Create a subfolder in the selected folder."""
+        folder_path = self._get_item_path(item)
+
+        folder_name, ok = QInputDialog.getText(
+            self, "Create Subfolder", f"Enter folder name (parent: {folder_path}):"
+        )
+
+        if ok and folder_name.strip():
+            result = self.main_window.app_service.create_folder(
+                parent_folder_path=folder_path,
+                folder_name=folder_name.strip()
+            )
+
+            if result.success:
+                self.main_window._show_success(result.data.success_message)
+                self.main_window._update_ui_state()
+            else:
+                self.main_window._show_error("Create Folder Failed", result.error)
+
+    def _import_file_to_folder(self, item: QTreeWidgetItem):
+        """Import a file to the selected folder."""
+        folder_path = self._get_item_path(item)
+
+        # Get file to import
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Import File to " + folder_path,
+            "", "All Files (*);;FASTA Files (*.fasta *.fa *.fas);;FASTQ Files (*.fastq *.fq)"
+        )
+
+        if file_path:
+            result = self.main_window.app_service.import_file(
+                source_file_path=file_path,
+                target_folder_path=folder_path,
+                copy_file=True,
+                auto_detect_format=True
+            )
+
+            if result.success:
+                message = result.data.success_message
+                if result.data.detected_format:
+                    format_info = result.data.detected_format['content_based']
+                    if format_info['confidence'] > 0.7:
+                        message += f"\nDetected format: {format_info['format']}"
+
+                self.main_window._show_success(message)
+                self.main_window._update_ui_state()
+            else:
+                self.main_window._show_error("Import Failed", result.error)
+
+    def _get_item_path(self, item: QTreeWidgetItem) -> str:
+        """Get the full path of a tree item."""
+        if not item:
+            return "Root"
+
+        path_parts = []
+        current_item = item
+
+        while current_item:
+            path_parts.insert(0, current_item.text(0))
+            current_item = current_item.parent()
+
+        return "/".join(path_parts) if path_parts else "Root"
 
 
 class ContentViewer(QWidget):
@@ -99,7 +322,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(splitter)
 
         # Left panel: Project structure
-        self.project_tree = ProjectTreeWidget()
+        self.project_tree = ProjectTreeWidget(self)
         splitter.addWidget(self.project_tree)
 
         # Right panel: Content viewer
@@ -430,11 +653,24 @@ class MainWindow(QMainWindow):
         for subfolder in folder.subfolders.values():
             self._populate_tree_folder(subfolder, folder_item)
 
-        # Add files
+        # Add files with color coding based on category
         for file_ref in folder.files.values():
             file_item = QTreeWidgetItem(folder_item, [file_ref.name])
-            # Store file reference for later use
+
+            # Store file reference for context menu and other operations
             file_item.setData(0, Qt.UserRole, file_ref)
+
+            # Apply color coding based on file category
+            if hasattr(file_ref, 'file_category'):
+                color = FileCategory.get_display_color(file_ref.file_category)
+                file_item.setForeground(0, QColor(color))
+
+                # Set tooltip to show category
+                category_name = FileCategory.get_display_name(file_ref.file_category)
+                tooltip = f"{file_ref.name}\nType: {file_ref.file_type}\nCategory: {category_name}"
+                if hasattr(file_ref, 'size_bytes'):
+                    tooltip += f"\nSize: {file_ref.size_bytes} bytes"
+                file_item.setToolTip(0, tooltip)
 
     # Action Methods
 
@@ -657,7 +893,7 @@ class MainWindow(QMainWindow):
 
         return "/".join(path_parts) if path_parts else "Root"
 
-    # tool launcher
+    # For launching tools
 
     def _launch_primer_overlap_tool(self):
         """Open the Primer Overlap Analysis tool dialog."""
@@ -697,6 +933,7 @@ class MainWindow(QMainWindow):
                 "Tool Error",
                 f"Failed to launch Primer Overlap tool:\n{e}"
             )
+
 
     # Message Display Methods
 

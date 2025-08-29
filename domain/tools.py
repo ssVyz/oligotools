@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 import uuid
 
-from .entities import FileReference
+from .entities import FileReference, FileCategory
 from .exceptions import DomainError
 
 
@@ -145,9 +145,22 @@ class ToolInputRequirement:
     name: str
     description: str
     file_types: List[str]  # e.g., ['fasta', 'fastq']
+    required_categories: Optional[List[FileCategory]] = None  # e.g., [FileCategory.OLIGOS]
     min_files: int = 1
     max_files: Optional[int] = None
     required: bool = True
+
+    def is_file_compatible(self, file_ref: FileReference) -> bool:
+        """Check if a file reference is compatible with this requirement."""
+        # Check file type
+        type_match = file_ref.file_type.lower() in [ft.lower() for ft in self.file_types]
+
+        # Check category if specified
+        category_match = True
+        if self.required_categories:
+            category_match = file_ref.file_category in self.required_categories
+
+        return type_match and category_match
 
 
 class BaseTool(ABC):
@@ -219,19 +232,19 @@ class BaseTool(ABC):
 
         for req in requirements:
             if req.required:
-                # Find files matching this requirement
-                matching_files = []
-                for file_ref in input_files:
-                    if file_ref.file_type in req.file_types:
-                        matching_files.append(file_ref)
+                # Find files matching this requirement (both type and category)
+                matching_files = [file_ref for file_ref in input_files if req.is_file_compatible(file_ref)]
 
                 if len(matching_files) < req.min_files:
-                    raise ToolError(
-                        f"Tool requires at least {req.min_files} {'/'.join(req.file_types)} files for '{req.name}', but only {len(matching_files)} provided")
+                    category_desc = ""
+                    if req.required_categories:
+                        category_names = [cat.value for cat in req.required_categories]
+                        category_desc = f" with categories {'/'.join(category_names)}"
+
+                    raise ToolError(f"Tool requires at least {req.min_files} {'/'.join(req.file_types)} files{category_desc} for '{req.name}', but only {len(matching_files)} provided")
 
                 if req.max_files and len(matching_files) > req.max_files:
-                    raise ToolError(
-                        f"Tool accepts at most {req.max_files} {'/'.join(req.file_types)} files for '{req.name}', but {len(matching_files)} provided")
+                    raise ToolError(f"Tool accepts at most {req.max_files} {'/'.join(req.file_types)} files for '{req.name}', but {len(matching_files)} provided")
 
 
 class PrimerOverlapTool(BaseTool):
@@ -291,8 +304,9 @@ class PrimerOverlapTool(BaseTool):
         return [
             ToolInputRequirement(
                 name="primers",
-                description="FASTA files containing primer sequences",
+                description="FASTA files containing oligonucleotide/primer sequences",
                 file_types=["fasta", "fa", "fas"],
+                required_categories=[FileCategory.OLIGOS],
                 min_files=1,
                 max_files=None,
                 required=True
@@ -357,7 +371,7 @@ class PrimerOverlapTool(BaseTool):
         return result
 
     def _analyze_sequences(self, sequences: List, parameters: Dict[str, Any],
-                           output_directory: str) -> Dict[str, Any]:
+                          output_directory: str) -> Dict[str, Any]:
         """
         Core analysis logic - this will be moved to application layer.
         Keeping this as a placeholder for the actual BioPython analysis.

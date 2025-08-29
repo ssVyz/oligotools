@@ -5,6 +5,7 @@ Defines the structure and common functionality for all use cases.
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional, TypeVar, Generic
+from domain.entities import Project
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -123,9 +124,10 @@ class BaseUseCase(ABC, Generic[TRequest, TResponse]):
 
 @dataclass
 class ProjectRequest:
-    """Base class for requests that operate on projects."""
+    """Base class for requests that operate on a project.
+    Supports either a full Project object or a project_id."""
+    project: Optional[Project] = None
     project_id: Optional[str] = None
-
 
 @dataclass
 class FileOperationRequest(ProjectRequest):
