@@ -1,0 +1,15 @@
+# Core UI Framework
+PySide6>=6.5.0
+
+# Bioinformatics libraries (for future use)
+biopython>=1.81
+
+# Utilities
+pathlib2>=2.3.0  # For enhanced path handling
+typing-extensions>=4.0.0  # For better type hints
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# pytest-qt>=4.0.0
+# black>=22.0.0
+# mypy>=1.0.0
