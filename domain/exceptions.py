@@ -13,6 +13,15 @@ class ProjectError(DomainError):
     """Raised when there are issues with project operations."""
     pass
 
+'''
+class ToolError(DomainError):
+    """Raised when there are issues with tool operations."""
+    pass
+
+class ToolParameterError(DomainError):
+    """Raised when there are issues with tool operations."""
+    pass
+'''
 
 class FolderError(DomainError):
     """Raised when there are issues with folder operations."""

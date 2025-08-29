@@ -657,6 +657,47 @@ class MainWindow(QMainWindow):
 
         return "/".join(path_parts) if path_parts else "Root"
 
+    # tool launcher
+
+    def _launch_primer_overlap_tool(self):
+        """Open the Primer Overlap Analysis tool dialog."""
+        try:
+            # 1. Ensure a project is open
+            project = getattr(self.app_service, "current_project", None)
+            if not project:
+                QMessageBox.warning(
+                    self,
+                    "No Project Open",
+                    "Please create or open a project before running tools."
+                )
+                return
+
+            # 2. Try to pre-select a file from the project tree
+            preselected = []
+            try:
+                item = self.project_tree.currentItem()
+                if item and hasattr(item, "file_ref") and item.file_ref:
+                    rel = getattr(item.file_ref, "relative_path", None)
+                    if isinstance(rel, str):
+                        preselected = [rel]
+            except Exception:
+                pass
+
+            # 3. Launch the dialog
+            dialog = PrimerOverlapToolDialog(
+                self.app_service,
+                preselected_files=preselected,
+                parent=self
+            )
+            dialog.exec()
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Tool Error",
+                f"Failed to launch Primer Overlap tool:\n{e}"
+            )
+
     # Message Display Methods
 
     def _show_success(self, message):

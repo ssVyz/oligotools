@@ -11,7 +11,7 @@ from datetime import datetime
 
 from domain.entities import Project, FileReference
 from domain.tools import BaseTool, ToolResult, get_available_tools, get_tool_by_id
-from domain.exceptions import ToolError, ToolParameterError
+from domain import ToolError, ToolParameterError
 from data.exceptions import DataError
 from ..base_use_case import BaseUseCase
 from ..exceptions import UseCaseError, ValidationError
