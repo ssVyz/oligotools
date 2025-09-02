@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor
 from typing import Dict, Any, List, Optional
 from pathlib import Path
-
+from PySide6.QtWidgets import QApplication
 from domain.tools import BaseTool, ToolParameter, get_tool_by_id
 from domain.entities import FileReference
 from application import ApplicationService
@@ -382,18 +382,32 @@ class BaseToolDialog(QDialog):
             if tool_result.warnings:
                 message += f"\n\nWarnings:\n" + "\n".join(tool_result.warnings)
 
+            # ADDED: Delay the UI update to ensure all operations are complete
+            from PySide6.QtCore import QTimer
+
+            def update_parent_ui():
+                # Signal parent window to refresh project tree
+                if hasattr(self.parent(), '_update_ui_state'):
+                    self.parent()._update_ui_state()
+
+                # Force immediate GUI processing
+                QApplication.processEvents()
+
+                # Also force a manual tree refresh
+                if hasattr(self.parent(), '_refresh_project_tree'):
+                    self.parent()._refresh_project_tree()
+                    QApplication.processEvents()
+
+            # Execute the UI update after a short delay
+            QTimer.singleShot(200, update_parent_ui)
+
             QMessageBox.information(self, "Tool Completed", message)
-
-            # Signal parent window to refresh project tree
-            if hasattr(self.parent(), '_update_ui_state'):
-                self.parent()._update_ui_state()
-
             self.accept()  # Close dialog on success
 
         else:
             # Show error message
             QMessageBox.critical(self, "Tool Failed",
-                               f"Tool execution failed:\n\n{result.error}")
+                                 f"Tool execution failed:\n\n{result.error}")
             self.status_label.setText("Tool execution failed")
 
     def closeEvent(self, event):

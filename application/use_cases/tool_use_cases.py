@@ -15,6 +15,7 @@ from domain import ToolError, ToolParameterError
 from data.exceptions import DataError
 from ..base_use_case import BaseUseCase
 from ..exceptions import UseCaseError, ValidationError
+import shutil
 
 
 @dataclass
@@ -113,7 +114,7 @@ class RunToolUseCase(BaseUseCase[RunToolRequest, RunToolResponse]):
 
             # Import results back to project if requested
             if request.output_to_project and tool_result.success:
-                imported_files = self._import_results_to_project(
+                imported_files = self._import_results_to_project_timestamped(
                     request.project, tool_result, str(tool_output_dir)
                 )
 
@@ -305,9 +306,9 @@ class RunToolUseCase(BaseUseCase[RunToolRequest, RunToolResponse]):
 
         return output_files
 
-    def _import_results_to_project(self, project: Project, tool_result: ToolResult,
-                                 output_dir: str) -> List[FileReference]:
-        """Import tool results back into the project."""
+    def _import_results_to_project_timestamped(self, project: Project, tool_result: ToolResult,
+                                               output_dir: str) -> List[FileReference]:
+        """Import tool results to a timestamped subfolder in Results."""
         imported_files = []
 
         # Ensure "Results" folder exists in project
@@ -317,18 +318,34 @@ class RunToolUseCase(BaseUseCase[RunToolRequest, RunToolResponse]):
             project.create_folder_at_path("Root", "Results")
             results_folder = project.get_folder_by_path("Root/Results")
 
-        # Import each output file
-        for output_file_path in tool_result.output_files:
-            try:
-                file_ref = self.project_repository.import_file_to_project(
-                    project=project,
-                    source_file_path=output_file_path,
-                    target_folder_path="Root/Results",
-                    copy_file=False  # Don't copy since it's already in our output dir
-                )
-                imported_files.append(file_ref)
-            except Exception as e:
-                tool_result.add_warning(f"Could not import {output_file_path}: {str(e)}")
+        # Create a timestamped subfolder for this tool run
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        tool_subfolder_name = f"{tool_result.tool_id}_{timestamp}"
+
+        try:
+            # Create the subfolder
+            project.create_folder_at_path("Root/Results", tool_subfolder_name)
+            target_folder_path = f"Root/Results/{tool_subfolder_name}"
+
+            # Import each output file to the timestamped subfolder
+            for output_file_path in tool_result.output_files:
+                try:
+                    file_ref = self.project_repository.import_file_to_project(
+                        project=project,
+                        source_file_path=output_file_path,
+                        target_folder_path=target_folder_path,
+                        copy_file=False  # Don't copy since it's already in our output dir
+                    )
+                    imported_files.append(file_ref)
+
+                except Exception as e:
+                    tool_result.add_warning(f"Could not import {output_file_path}: {str(e)}")
+
+        except Exception as e:
+            tool_result.add_warning(f"Could not create timestamped subfolder: {str(e)}")
+            # Fall back to direct Results folder import with unique naming
+            return self._import_results_to_project(project, tool_result, output_dir)
 
         return imported_files
 
