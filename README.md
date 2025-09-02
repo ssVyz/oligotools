@@ -8,11 +8,12 @@ A bioinformatics application for managing and analyzing oligonucleotide sequence
 
 - ✅ **Complete Architecture** - All layers implemented (Domain, Data, Application, UI)
 - ✅ **Project Management** - Create, save, load, and validate projects with JSON persistence
-- ✅ **File Organization** - Hierarchical folder structure with unlimited nesting
-- ✅ **File Import** - Import sequence files with automatic format detection
+- ✅ **Advanced File Organization** - Hierarchical folder structure with file categorization system
+- ✅ **File Import & Management** - Import, categorize, move, rename, and organize sequence files
 - ✅ **Content Viewing** - Real-time display of file contents and project structure
-- ✅ **Professional UI** - Intuitive interface with dialogs, menus, and error handling
-- ✅ **Analysis Tools** - Modular tool system with primer overlap analysis
+- ✅ **Professional UI** - Intuitive interface with context menus, color coding, and error handling
+- ✅ **Analysis Tools** - Modular tool system with category-aware primer overlap analysis
+- ✅ **Enhanced File Management** - Right-click operations for comprehensive file control
 
 ## Features
 
@@ -22,26 +23,40 @@ A bioinformatics application for managing and analyzing oligonucleotide sequence
 - **Project Validation** - Check file references and get recommendations
 - **Change Tracking** - Visual indicators for unsaved changes
 
-### File Management
+### Advanced File Management
 - **Flexible Folder Structure** - Create unlimited nested folders to organize your files
+- **File Categorization System** - Categorize FASTA files as Oligos, Reference Sequences, or Reference Sequence Lists
+- **Visual Color Coding** - Green (Oligos), Blue (Reference Sequence), Purple (Reference Sequence List), Black (Uncategorized)
+- **Context Menu Operations** - Right-click files and folders for quick actions:
+  - Set file categories
+  - Rename files within project
+  - Move files between folders
+  - Remove files from project (keeps original file on disk)
+  - Create subfolders
+  - Import files to specific locations
 - **File Import** - Import FASTA, FASTQ, text files, and other bioinformatics formats
 - **Format Detection** - Automatic detection of file types based on content and extension
-- **File Referencing** - Option to copy files into project or reference external locations
-- **Content Preview** - View file contents directly in the application
+- **Enhanced Tooltips** - Detailed file information including category, type, and size
 
 ### Analysis Tools
-- **Modular Tool System** - Extensible framework for adding new analysis capabilities
-- **Primer Overlap Analyzer** - Analyze 3'-end overlaps between primers to predict dimer formation
+- **Category-Aware Tool System** - Tools automatically filter compatible file categories
+- **Primer Overlap Analyzer** - Analyze 3'-end overlaps between primer sequences to predict dimer formation
+  - **Selective Input** - Only accepts files categorized as "Oligos"
+  - **Risk Assessment** - HIGH/MEDIUM/LOW risk classification
+  - **Visual Overlaps** - ASCII diagrams showing primer interactions
+  - **Comprehensive Reports** - Detailed text reports and CSV summaries
 - **Background Processing** - Tools run in separate threads to maintain UI responsiveness
 - **Automated Output Management** - Results saved to disk and automatically imported to project
 - **Parameter Validation** - Type checking and range validation for all tool parameters
 
 ### User Interface
 - **Two-Panel Design** - Project tree on left, content viewer on right
-- **Interactive Project Tree** - Real-time display of your project structure
-- **Smart Menus** - Context-sensitive actions that enable only when appropriate
+- **Interactive Project Tree** - Real-time display with color-coded files and context menus
+- **Smart Menus** - Context-sensitive actions that adapt based on file type and project state
 - **Professional Dialogs** - User-friendly forms for all operations
 - **Tool Integration** - Access analysis tools through Tools → Analysis menu
+- **Enhanced File Display** - Category information, color coding, and detailed tooltips
+- **Automatic Refresh** - Project tree updates immediately after tool completion
 - **Comprehensive Error Handling** - Clear error messages and warnings
 
 ## Installation
@@ -77,6 +92,7 @@ oligotools/
 │       ├── __init__.py
 │       ├── project_use_cases.py
 │       ├── file_use_cases.py
+│       ├── file_management_use_cases.py
 │       └── tool_use_cases.py
 ├── ui/
 │   ├── __init__.py
@@ -100,11 +116,32 @@ python main.py
 python example_usage.py
 ```
 
+## File Categorization System
+
+### Supported Categories
+- **Uncategorized** - Default state for all imported files (Black text)
+- **Oligos** - Primer/oligonucleotide sequences for PCR, qPCR, etc. (Green text)
+- **Reference Sequence** - Single reference sequences for alignment (Blue text)
+- **Reference Sequence List** - Multiple reference sequences (Purple text)
+
+### Setting Categories
+1. Right-click any FASTA file in the project tree
+2. Select "Set Category" from context menu
+3. Choose appropriate category
+4. File color updates immediately
+
+### Category Benefits
+- **Tool Compatibility** - Tools only show compatible file categories
+- **Visual Organization** - Instant visual identification of file purposes
+- **Error Prevention** - Prevents using wrong sequence types in analyses
+
 ## Analysis Tools
 
 ### Primer Overlap Analyzer
 
 Analyzes 3'-end overlaps between primer sequences to predict primer-dimer formation risk.
+
+**Category Requirement:** Only accepts files categorized as "Oligos"
 
 **Features:**
 - Configurable overlap length ranges (2-20 bases)
@@ -116,14 +153,15 @@ Analyzes 3'-end overlaps between primer sequences to predict primer-dimer format
 
 **Usage:**
 1. Import FASTA files containing primer sequences
-2. Go to **Tools → Analysis → Primer Overlap Analyzer**
-3. Select input files (auto-detects FASTA files from project)
-4. Configure parameters:
+2. **Categorize files as "Oligos"** using right-click menu
+3. Go to **Tools → Analysis → Primer Overlap Analyzer**
+4. Select input files (only "Oligos" category files will appear)
+5. Configure parameters:
    - Minimum/Maximum overlap length
    - Maximum allowed mismatches  
    - Include self-comparisons
-5. Click **Run Tool**
-6. View results in generated reports
+6. Click **Run Tool**
+7. View results in generated reports
 
 **Output Files:**
 - `primer_overlap_analysis.txt` - Detailed analysis with visualizations
@@ -135,14 +173,36 @@ Analyzes 3'-end overlaps between primer sequences to predict primer-dimer format
 - **MEDIUM Risk**: 2-3 perfect matches OR ≥4 matches with 1 mismatch
 - **LOW Risk**: All other combinations
 
+## Enhanced File Operations
+
+### Context Menu Operations
+
+**For FASTA Files:**
+- **Set Category** - Assign Oligos, Reference Sequence, or Reference Sequence List categories
+- **Rename File** - Rename files within the project structure
+- **Move to Folder** - Relocate files to different project folders
+- **Remove from Project** - Remove file reference from project (keeps original file on disk)
+
+**For Folders:**
+- **Create Subfolder** - Add nested organizational folders
+- **Import File Here** - Import files directly to specific folders
+
+### File Management Workflow
+1. **Import Files** - Use File → Import File or drag files to project tree
+2. **Organize Structure** - Create folders to organize your files logically
+3. **Categorize FASTA Files** - Right-click to assign appropriate categories
+4. **Run Analysis** - Tools will automatically filter compatible files
+5. **Manage Results** - Output files appear automatically in Results folder
+
 ## Architecture
 
 The application follows **Clean Architecture** principles with clear separation of concerns:
 
 ### **Domain Layer** (`domain/`)
-- **Core Entities**: `Project`, `Folder`, `FileReference` with business rules
-- **Analysis Tools**: `BaseTool`, `PrimerOverlapTool` with extensible framework
-- **Business Logic**: File organization, validation, tool execution
+- **Core Entities**: `Project`, `Folder`, `FileReference` with file categorization
+- **File Categories**: `FileCategory` enum with visual color coding
+- **Analysis Tools**: `BaseTool`, `PrimerOverlapTool` with category-aware filtering
+- **Business Logic**: File organization, validation, categorization rules
 - **Domain Exceptions**: Specific error types for business rule violations
 
 ### **Data Layer** (`data/`)
@@ -152,14 +212,17 @@ The application follows **Clean Architecture** principles with clear separation 
 
 ### **Application Layer** (`application/`)
 - **ApplicationService**: Central coordinator providing unified API to UI
-- **Use Cases**: Individual operations (CreateProject, ImportFile, RunTool, etc.)
-- **Tool Execution**: Background processing with result management
+- **Use Cases**: Individual operations (CreateProject, ImportFile, RunTool, SetFileCategory, etc.)
+- **File Management**: Enhanced operations for move, rename, categorize, remove
+- **Tool Execution**: Background processing with category-aware file filtering
 - **State Management**: Project lifecycle and change tracking
 
 ### **UI Layer** (`ui/`)
-- **MainWindow**: Primary interface with project tree and content viewer
-- **Tool Dialogs**: Professional parameter configuration and execution interfaces
+- **MainWindow**: Primary interface with color-coded project tree and context menus
+- **Context Menus**: Right-click operations for files and folders
+- **Tool Dialogs**: Professional parameter configuration with category filtering
 - **Error Handling**: User-friendly messages and confirmations
+- **Visual Feedback**: Color coding, tooltips, and status updates
 
 ## Usage Guide
 
@@ -168,40 +231,38 @@ The application follows **Clean Architecture** principles with clear separation 
 1. **Launch Oligotools**: Run `python main.py`
 2. **New Project**: Go to File → New Project
 3. **Fill Project Details**: Enter name, description, and choose save location
-4. **Start Organizing**: Create folders using Tools → Create Folder
+4. **Start Organizing**: Create folders using right-click context menus
 
-### Importing Files
+### Importing and Categorizing Files
 
-1. **Select Target Folder**: Click on a folder in the project tree
-2. **Import File**: Go to File → Import File (or use toolbar button)
-3. **Choose File**: Select your sequence file (FASTA, FASTQ, etc.)
-4. **View Content**: Click the imported file to see its contents
+1. **Import Files**: Go to File → Import File or right-click folders
+2. **Choose Files**: Select your sequence files (FASTA, FASTQ, etc.)
+3. **Categorize FASTA Files**: Right-click imported FASTA files
+4. **Set Categories**: Choose Oligos, Reference Sequence, or Reference Sequence List
+5. **Visual Confirmation**: Files display in appropriate colors
 
 ### Running Analysis Tools
 
-1. **Import Primer Files**: Import FASTA files containing primer sequences
+1. **Prepare Files**: Ensure FASTA files are properly categorized
 2. **Launch Tool**: Go to Tools → Analysis → Primer Overlap Analyzer
-3. **Configure Analysis**:
-   - Select input files from project
-   - Set overlap length range (recommended: 3-10 bases)
-   - Set maximum mismatches (recommended: 0-1)
-   - Enable/disable self-dimer detection
-4. **Run Analysis**: Click "Run Tool" and wait for completion
-5. **View Results**: Check generated reports in project's Results folder
+3. **Automatic Filtering**: Only compatible files (e.g., "Oligos") will appear
+4. **Configure Analysis**: Set parameters and select files
+5. **Run Analysis**: Click "Run Tool" and wait for completion
+6. **View Results**: Check generated reports in project's Results folder
 
-### Project Organization
+### Advanced File Management
 
-- **Create Folders**: Use Tools → Create Folder to organize your files
-- **Nested Structure**: Create folders within folders for complex projects
-- **File Management**: Import, view, and organize all your sequence files
-- **Output Management**: Tool results automatically organized in Results folder
-- **Project Validation**: Use Tools → Validate Project to check file integrity
+- **Move Files**: Right-click → Move to Folder → Select destination
+- **Rename Files**: Right-click → Rename File → Enter new name
+- **Remove from Project**: Right-click → Remove from Project (keeps original file)
+- **Create Organization**: Right-click folders → Create Subfolder
+- **Direct Import**: Right-click folders → Import File Here
 
 ## File Format Support
 
 The application automatically detects and supports:
 
-- **FASTA** (`.fasta`, `.fa`, `.fas`) - Sequence files
+- **FASTA** (`.fasta`, `.fa`, `.fas`) - Sequence files with categorization support
 - **FASTQ** (`.fastq`, `.fq`) - Sequencing data with quality scores  
 - **GenBank** (`.gb`, `.gbk`) - Annotated sequence files
 - **Text Files** (`.txt`) - Analysis results and documentation
@@ -212,8 +273,8 @@ The application automatically detects and supports:
 
 Projects are saved as `.oligoproj` files containing:
 - Project metadata (name, description, dates)
-- Complete folder hierarchy
-- File references with relative paths
+- Complete folder hierarchy with file categories
+- File references with relative paths and categorization
 - Import history and file statistics
 
 Output files are organized as:
@@ -234,10 +295,20 @@ The modular tool system makes it easy to add new analysis capabilities:
 
 1. **Create Tool Class**: Inherit from `BaseTool` in `domain/tools.py`
 2. **Define Parameters**: Specify configurable parameters with validation
-3. **Implement Logic**: Add analysis logic in `execute()` method
-4. **Add Use Case**: Create tool-specific execution logic in application layer
-5. **Create UI Dialog**: Extend `BaseToolDialog` for parameter configuration
-6. **Register Tool**: Add to `AVAILABLE_TOOLS` registry
+3. **Set Category Requirements**: Specify required file categories in `get_input_requirements()`
+4. **Implement Logic**: Add analysis logic in `execute()` method
+5. **Add Use Case**: Create tool-specific execution logic in application layer
+6. **Create UI Dialog**: Extend `BaseToolDialog` for parameter configuration
+7. **Register Tool**: Add to `AVAILABLE_TOOLS` registry
+
+### Adding New File Categories
+
+To add new file categories:
+
+1. **Extend FileCategory Enum**: Add new category to `domain/entities.py`
+2. **Add Display Properties**: Define display name and color in enum methods
+3. **Update Tools**: Specify category requirements in tool definitions
+4. **Test Integration**: Ensure UI properly displays new categories
 
 ### Testing the Complete Workflow
 
@@ -251,7 +322,9 @@ The `example_usage.py` script demonstrates all functionality:
 ### Architecture Benefits
 
 - **Modular Design**: Each layer has clear responsibilities
-- **Tool Extensibility**: Easy to add new analysis capabilities
+- **Category System**: Prevents incompatible file usage in tools
+- **Tool Extensibility**: Easy to add new analysis capabilities with category awareness
+- **Enhanced UX**: Right-click operations and visual feedback improve usability
 - **Testability**: Use cases can be tested independently
 - **Maintainability**: Clean separation between UI and business logic
 - **Background Processing**: Long-running analyses don't block the UI
@@ -269,16 +342,20 @@ The `example_usage.py` script demonstrates all functionality:
 
 - **Tool Import Errors**: Ensure BioPython is installed (`pip install biopython`)
 - **File Not Found**: Check that imported files haven't been moved or deleted
+- **Category Issues**: Ensure FASTA files are properly categorized before running tools
+- **Tool Compatibility**: Only files with compatible categories will appear in tool dialogs
 - **Permission Errors**: Ensure write access to project directory and output folder
-- **Tool Execution Fails**: Check parameter values are within valid ranges
+- **Context Menu Not Working**: Ensure you're right-clicking directly on file/folder items
 
 ### Getting Help
 
 - Check the application's built-in validation (Tools → Validate Project)
 - Review error messages in dialog boxes
+- Verify file categories match tool requirements
 - Ensure file paths are accessible and files haven't been moved
 - Check tool parameter ranges and requirements
+- Use right-click context menus for file management operations
 
 ---
 
-**Oligotools** - Complete bioinformatics project management and analysis platform.
+**Oligotools** - Complete bioinformatics project management and analysis platform with advanced file categorization and management capabilities.
