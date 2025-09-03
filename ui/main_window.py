@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QSize, QPoint, QMimeData, QByteArray
 from PySide6.QtGui import QAction, QIcon, QColor, QCursor, QDrag, QPixmap
+from PySide6.QtWidgets import QStyle
 from pathlib import Path
 from typing import List, Optional
 import json
@@ -518,6 +519,7 @@ class MainWindow(QMainWindow):
 
         # Initialize application service
         self.app_service = ApplicationService()
+        self._init_icons()
 
         self._setup_ui()
         self._setup_menubar()
@@ -552,6 +554,47 @@ class MainWindow(QMainWindow):
 
         # Connect tree selection to content viewer
         self.project_tree.itemClicked.connect(self._on_tree_item_clicked)
+
+    def _init_icons(self):
+        """Initialize icon cache from Qt standard icons."""
+        style = self.style()
+
+        # Folder icons
+        self.folder_closed_icon = style.standardIcon(QStyle.SP_DirClosedIcon)
+        self.folder_open_icon = style.standardIcon(QStyle.SP_DirOpenIcon)
+        self.folder_home_icon = style.standardIcon(QStyle.SP_DirHomeIcon)
+
+        # File type icons
+        self.file_generic_icon = style.standardIcon(QStyle.SP_FileIcon)
+        self.file_text_icon = style.standardIcon(QStyle.SP_FileDialogDetailedView)
+        self.file_data_icon = style.standardIcon(QStyle.SP_FileDialogListView)
+        self.file_link_icon = style.standardIcon(QStyle.SP_FileLinkIcon)
+
+        # Special icons for categories
+        self.dna_icon = style.standardIcon(QStyle.SP_FileDialogDetailedView)  # For FASTA
+        self.results_icon = style.standardIcon(QStyle.SP_DialogSaveButton)  # For results
+        self.computer_icon = style.standardIcon(QStyle.SP_ComputerIcon)  # For root
+
+    def _get_file_icon(self, file_ref):
+        """Get appropriate icon for a file based on its type and category."""
+        file_type = file_ref.file_type.lower()
+
+        # Check file type
+        if file_type in ['fasta', 'fa', 'fas', 'fna', 'ffn', 'faa', 'frn']:
+            # FASTA files - use DNA icon
+            return self.dna_icon
+        elif file_type in ['csv', 'tsv', 'tab']:
+            # Tabular data files
+            return self.file_data_icon
+        elif file_type in ['txt', 'text']:
+            # Text files
+            return self.file_text_icon
+        elif file_type in ['fastq', 'fq']:
+            # FASTQ sequencing files
+            return self.file_link_icon
+        else:
+            # Generic file icon
+            return self.file_generic_icon
 
     def _setup_menubar(self):
         """Set up the menu bar."""
@@ -865,33 +908,88 @@ class MainWindow(QMainWindow):
         if parent_item is None:
             # Root folder
             folder_item = QTreeWidgetItem(self.project_tree, [folder.name])
+            folder_item.setIcon(0, self.computer_icon)  # Add root icon
         else:
             folder_item = QTreeWidgetItem(parent_item, [folder.name])
+            # Set folder icon (closed by default)
+            folder_item.setIcon(0, self.folder_closed_icon)
 
         folder_item.setExpanded(True)
+
+        # Handle expansion state changes for folder icons
+        def update_folder_icon():
+            if folder_item.isExpanded():
+                folder_item.setIcon(0, self.folder_open_icon)
+            else:
+                folder_item.setIcon(0, self.folder_closed_icon)
+
+        # Connect expansion state change (if not root)
+        if parent_item is not None:
+            self.project_tree.itemExpanded.connect(
+                lambda item: update_folder_icon() if item == folder_item else None
+            )
+            self.project_tree.itemCollapsed.connect(
+                lambda item: update_folder_icon() if item == folder_item else None
+            )
 
         # Add subfolders
         for subfolder in folder.subfolders.values():
             self._populate_tree_folder(subfolder, folder_item)
 
-        # Add files with color coding based on category
+        # Add files with icons and color coding based on category
         for file_ref in folder.files.values():
             file_item = QTreeWidgetItem(folder_item, [file_ref.name])
+
+            # Set file icon
+            file_icon = self._get_file_icon(file_ref)
+            file_item.setIcon(0, file_icon)
 
             # Store file reference for context menu and other operations
             file_item.setData(0, Qt.UserRole, file_ref)
 
-            # Apply color coding based on file category
+            # Apply color coding based on file category (existing code)
             if hasattr(file_ref, 'file_category'):
                 color = FileCategory.get_display_color(file_ref.file_category)
                 file_item.setForeground(0, QColor(color))
 
                 # Set tooltip to show category
                 category_name = FileCategory.get_display_name(file_ref.file_category)
-                tooltip = f"{file_ref.name}\nType: {file_ref.file_type}\nCategory: {category_name}"
+
+                # Get file type description
+                type_desc = self._get_file_type_description(file_ref.file_type)
+
+                tooltip = f"{file_ref.name}\nType: {type_desc}\nCategory: {category_name}"
                 if hasattr(file_ref, 'size_bytes'):
-                    tooltip += f"\nSize: {file_ref.size_bytes} bytes"
+                    # Format file size nicely
+                    size_str = self._format_file_size(file_ref.size_bytes)
+                    tooltip += f"\nSize: {size_str}"
                 file_item.setToolTip(0, tooltip)
+
+    def _get_file_type_description(self, file_type):
+        """Get human-readable description for file type."""
+        descriptions = {
+            'fasta': 'FASTA Sequence',
+            'fa': 'FASTA Sequence',
+            'fas': 'FASTA Sequence',
+            'fastq': 'FASTQ Sequence',
+            'fq': 'FASTQ Sequence',
+            'csv': 'Comma-Separated Values',
+            'tsv': 'Tab-Separated Values',
+            'txt': 'Plain Text',
+            'gb': 'GenBank',
+            'gbk': 'GenBank',
+            'json': 'JSON Data',
+            'xml': 'XML Document'
+        }
+        return descriptions.get(file_type.lower(), file_type.upper() + ' File')
+
+    def _format_file_size(self, size_bytes):
+        """Format file size in human-readable format."""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
 
     # Action Methods
 
