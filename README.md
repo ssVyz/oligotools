@@ -9,11 +9,12 @@ A bioinformatics application for managing and analyzing oligonucleotide sequence
 - ✅ **Complete Architecture** - All layers implemented (Domain, Data, Application, UI)
 - ✅ **Project Management** - Create, save, load, and validate projects with JSON persistence
 - ✅ **Advanced File Organization** - Hierarchical folder structure with file categorization system
+- ✅ **Drag-and-Drop Support** - Move files between folders by dragging them in the project tree
 - ✅ **File Import & Management** - Import, categorize, move, rename, and organize sequence files
 - ✅ **Content Viewing** - Real-time display of file contents and project structure
-- ✅ **Professional UI** - Intuitive interface with context menus, color coding, and error handling
+- ✅ **Professional UI** - Intuitive interface with context menus, drag-and-drop, color coding, and error handling
 - ✅ **Analysis Tools** - Modular tool system with category-aware primer overlap analysis
-- ✅ **Enhanced File Management** - Right-click operations for comprehensive file control
+- ✅ **Enhanced File Management** - Right-click operations and drag-and-drop for comprehensive file control
 
 ## Features
 
@@ -25,12 +26,17 @@ A bioinformatics application for managing and analyzing oligonucleotide sequence
 
 ### Advanced File Management
 - **Flexible Folder Structure** - Create unlimited nested folders to organize your files
+- **Drag-and-Drop Operations** - Move files between folders by simply dragging and dropping them
+  - Single or multiple file selection
+  - Visual feedback during drag operations
+  - Auto-expansion of folders on hover
+  - Prevents invalid drops (files onto files, same folder drops)
 - **File Categorization System** - Categorize FASTA files as Oligos, Reference Sequences, or Reference Sequence Lists
 - **Visual Color Coding** - Green (Oligos), Blue (Reference Sequence), Purple (Reference Sequence List), Black (Uncategorized)
 - **Context Menu Operations** - Right-click files and folders for quick actions:
   - Set file categories
   - Rename files within project
-  - Move files between folders
+  - Move files between folders (also available via drag-and-drop)
   - Remove files from project (keeps original file on disk)
   - Create subfolders
   - Import files to specific locations
@@ -51,12 +57,17 @@ A bioinformatics application for managing and analyzing oligonucleotide sequence
 
 ### User Interface
 - **Two-Panel Design** - Project tree on left, content viewer on right
-- **Interactive Project Tree** - Real-time display with color-coded files and context menus
+- **Drag-and-Drop Support** - Intuitive file movement between folders
+  - Click and hold to drag files
+  - Multi-file selection support
+  - Visual indicators during drag
+  - Smart drop validation
+- **Interactive Project Tree** - Real-time display with color-coded files, drag-and-drop, and context menus
 - **Smart Menus** - Context-sensitive actions that adapt based on file type and project state
 - **Professional Dialogs** - User-friendly forms for all operations
 - **Tool Integration** - Access analysis tools through Tools → Analysis menu
 - **Enhanced File Display** - Category information, color coding, and detailed tooltips
-- **Automatic Refresh** - Project tree updates immediately after tool completion
+- **Automatic Refresh** - Project tree updates immediately after operations
 - **Comprehensive Error Handling** - Clear error messages and warnings
 
 ## Installation
@@ -115,6 +126,37 @@ python main.py
 ```bash
 python example_usage.py
 ```
+
+## File Organization with Drag-and-Drop
+
+### Moving Files Between Folders
+The application now supports intuitive drag-and-drop operations for file organization:
+
+1. **Single File Movement**
+   - Click and hold on any file in the project tree
+   - Drag the file to the desired folder
+   - Release to move the file
+
+2. **Multiple File Movement**
+   - Select multiple files using Ctrl+Click or Shift+Click
+   - Drag any selected file to move all selected files
+   - Drop on the target folder to move all files at once
+
+3. **Visual Feedback**
+   - Files being dragged show a visual indicator
+   - Folders automatically expand when hovering during drag
+   - Invalid drop targets are automatically rejected
+
+4. **Alternative Methods**
+   - Right-click → "Move to Folder" for dialog-based movement
+   - Use context menus for more control over the operation
+
+### Drag-and-Drop Features
+- **Smart Validation** - Prevents dropping files onto themselves or other files
+- **Folder Auto-Expansion** - Hover over collapsed folders to expand them
+- **Multi-Select Support** - Move multiple files in one operation
+- **Error Prevention** - Clear feedback when operations aren't allowed
+- **Automatic Tree Refresh** - Instant visual update after successful moves
 
 ## File Categorization System
 
@@ -180,7 +222,7 @@ Analyzes 3'-end overlaps between primer sequences to predict primer-dimer format
 **For FASTA Files:**
 - **Set Category** - Assign Oligos, Reference Sequence, or Reference Sequence List categories
 - **Rename File** - Rename files within the project structure
-- **Move to Folder** - Relocate files to different project folders
+- **Move to Folder** - Relocate files to different project folders (also available via drag-and-drop)
 - **Remove from Project** - Remove file reference from project (keeps original file on disk)
 
 **For Folders:**
@@ -188,8 +230,8 @@ Analyzes 3'-end overlaps between primer sequences to predict primer-dimer format
 - **Import File Here** - Import files directly to specific folders
 
 ### File Management Workflow
-1. **Import Files** - Use File → Import File or drag files to project tree
-2. **Organize Structure** - Create folders to organize your files logically
+1. **Import Files** - Use File → Import File or right-click folders to import
+2. **Organize Structure** - Create folders and use drag-and-drop to organize files
 3. **Categorize FASTA Files** - Right-click to assign appropriate categories
 4. **Run Analysis** - Tools will automatically filter compatible files
 5. **Manage Results** - Output files appear automatically in Results folder
@@ -218,11 +260,12 @@ The application follows **Clean Architecture** principles with clear separation 
 - **State Management**: Project lifecycle and change tracking
 
 ### **UI Layer** (`ui/`)
-- **MainWindow**: Primary interface with color-coded project tree and context menus
+- **MainWindow**: Primary interface with drag-and-drop support, color-coded project tree and context menus
+- **ProjectTreeWidget**: Custom tree widget with drag-and-drop file movement
 - **Context Menus**: Right-click operations for files and folders
 - **Tool Dialogs**: Professional parameter configuration with category filtering
 - **Error Handling**: User-friendly messages and confirmations
-- **Visual Feedback**: Color coding, tooltips, and status updates
+- **Visual Feedback**: Drag indicators, color coding, tooltips, and status updates
 
 ## Usage Guide
 
@@ -231,15 +274,20 @@ The application follows **Clean Architecture** principles with clear separation 
 1. **Launch Oligotools**: Run `python main.py`
 2. **New Project**: Go to File → New Project
 3. **Fill Project Details**: Enter name, description, and choose save location
-4. **Start Organizing**: Create folders using right-click context menus
+4. **Start Organizing**: Create folders and organize files with drag-and-drop or context menus
 
-### Importing and Categorizing Files
+### Importing and Organizing Files
 
 1. **Import Files**: Go to File → Import File or right-click folders
 2. **Choose Files**: Select your sequence files (FASTA, FASTQ, etc.)
-3. **Categorize FASTA Files**: Right-click imported FASTA files
-4. **Set Categories**: Choose Oligos, Reference Sequence, or Reference Sequence List
-5. **Visual Confirmation**: Files display in appropriate colors
+3. **Organize with Drag-and-Drop**: 
+   - Click and drag files to move them between folders
+   - Select multiple files with Ctrl/Shift for batch operations
+   - Folders expand automatically when hovering during drag
+4. **Alternative Organization**: Right-click for context menu options
+5. **Categorize FASTA Files**: Right-click imported FASTA files
+6. **Set Categories**: Choose Oligos, Reference Sequence, or Reference Sequence List
+7. **Visual Confirmation**: Files display in appropriate colors
 
 ### Running Analysis Tools
 
@@ -252,6 +300,13 @@ The application follows **Clean Architecture** principles with clear separation 
 
 ### Advanced File Management
 
+#### Drag-and-Drop Operations
+- **Move Single File**: Click, drag, and drop on target folder
+- **Move Multiple Files**: Select multiple files, then drag any selected file
+- **Visual Feedback**: See what you're moving while dragging
+- **Auto-Expand**: Hover over collapsed folders to open them
+
+#### Context Menu Operations
 - **Move Files**: Right-click → Move to Folder → Select destination
 - **Rename Files**: Right-click → Rename File → Enter new name
 - **Remove from Project**: Right-click → Remove from Project (keeps original file)
@@ -324,7 +379,7 @@ The `example_usage.py` script demonstrates all functionality:
 - **Modular Design**: Each layer has clear responsibilities
 - **Category System**: Prevents incompatible file usage in tools
 - **Tool Extensibility**: Easy to add new analysis capabilities with category awareness
-- **Enhanced UX**: Right-click operations and visual feedback improve usability
+- **Enhanced UX**: Drag-and-drop operations, right-click menus, and visual feedback improve usability
 - **Testability**: Use cases can be tested independently
 - **Maintainability**: Clean separation between UI and business logic
 - **Background Processing**: Long-running analyses don't block the UI
@@ -346,6 +401,7 @@ The `example_usage.py` script demonstrates all functionality:
 - **Tool Compatibility**: Only files with compatible categories will appear in tool dialogs
 - **Permission Errors**: Ensure write access to project directory and output folder
 - **Context Menu Not Working**: Ensure you're right-clicking directly on file/folder items
+- **Drag-and-Drop Not Working**: Ensure you're dragging files (not folders) to folder targets
 
 ### Getting Help
 
@@ -354,8 +410,8 @@ The `example_usage.py` script demonstrates all functionality:
 - Verify file categories match tool requirements
 - Ensure file paths are accessible and files haven't been moved
 - Check tool parameter ranges and requirements
-- Use right-click context menus for file management operations
+- Use right-click context menus or drag-and-drop for file management operations
 
 ---
 
-**Oligotools** - Complete bioinformatics project management and analysis platform with advanced file categorization and management capabilities.
+**Oligotools** - Complete bioinformatics project management and analysis platform with intuitive drag-and-drop file management and advanced categorization capabilities.
