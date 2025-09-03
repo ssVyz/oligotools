@@ -10,10 +10,11 @@ from PySide6.QtWidgets import (
     QMenu, QMessageBox, QFileDialog, QInputDialog, QDialog,
     QApplication
 )
-from PySide6.QtCore import Qt, QSize, QPoint
-from PySide6.QtGui import QAction, QIcon, QColor, QCursor
+from PySide6.QtCore import Qt, QSize, QPoint, QMimeData, QByteArray
+from PySide6.QtGui import QAction, QIcon, QColor, QCursor, QDrag, QPixmap
 from pathlib import Path
 from typing import List, Optional
+import json
 
 from application import ApplicationService
 from domain import FileCategory
@@ -22,7 +23,7 @@ from .tool_dialogs import PrimerOverlapToolDialog
 
 
 class ProjectTreeWidget(QTreeWidget):
-    """Custom tree widget for displaying project structure with context menus."""
+    """Custom tree widget for displaying project structure with context menus and drag-and-drop support."""
 
     def __init__(self, main_window):
         super().__init__()
@@ -31,6 +32,222 @@ class ProjectTreeWidget(QTreeWidget):
         self.setMinimumWidth(300)
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
+
+        # Enable drag and drop
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QTreeWidget.InternalMove)
+        self.setDefaultDropAction(Qt.MoveAction)
+        self.setSelectionMode(QTreeWidget.ExtendedSelection)  # Allow multiple selection
+
+        # Visual feedback during drag
+        self.viewport().setAcceptDrops(True)
+        self.setDropIndicatorShown(True)
+
+    def mimeTypes(self):
+        """Define supported MIME types for drag and drop."""
+        return ["application/x-oligotools-treeitem", "text/plain"]
+
+    def mimeData(self, items):
+        """Create MIME data for dragged items."""
+        if not items:
+            return None
+
+        mime_data = QMimeData()
+
+        # Collect data about dragged items
+        drag_data = []
+        for item in items:
+            file_ref = item.data(0, Qt.UserRole)
+
+            # Only allow dragging files, not folders (for now)
+            if file_ref and hasattr(file_ref, 'file_type'):
+                source_path = self._get_item_path(item.parent()) if item.parent() else "Root"
+                item_data = {
+                    'type': 'file',
+                    'name': file_ref.name,
+                    'source_path': source_path,
+                    'file_ref_id': file_ref.id
+                }
+                drag_data.append(item_data)
+
+        if not drag_data:
+            return None
+
+        # Serialize drag data
+        json_data = json.dumps(drag_data)
+        mime_data.setData("application/x-oligotools-treeitem", QByteArray(json_data.encode()))
+
+        # Also set plain text for visual feedback
+        if len(drag_data) == 1:
+            mime_data.setText(drag_data[0]['name'])
+        else:
+            mime_data.setText(f"{len(drag_data)} files")
+
+        return mime_data
+
+    def startDrag(self, supportedActions):
+        """Start drag operation with custom handling."""
+        items = self.selectedItems()
+        if not items:
+            return
+
+        # Check if any selected item is a file
+        has_files = any(item.data(0, Qt.UserRole) and hasattr(item.data(0, Qt.UserRole), 'file_type')
+                       for item in items)
+
+        if not has_files:
+            # Don't start drag if no files are selected
+            return
+
+        mime_data = self.mimeData(items)
+        if not mime_data:
+            return
+
+        drag = QDrag(self)
+        drag.setMimeData(mime_data)
+
+        # Create a pixmap for visual feedback
+        if len(items) == 1:
+            pixmap = QPixmap(150, 20)
+            pixmap.fill(Qt.transparent)
+            from PySide6.QtGui import QPainter
+            painter = QPainter(pixmap)
+            painter.drawText(pixmap.rect(), Qt.AlignCenter, items[0].text(0))
+            painter.end()
+        else:
+            pixmap = QPixmap(150, 20)
+            pixmap.fill(Qt.transparent)
+            from PySide6.QtGui import QPainter
+            painter = QPainter(pixmap)
+            painter.drawText(pixmap.rect(), Qt.AlignCenter, f"Moving {len(items)} files")
+            painter.end()
+
+        drag.setPixmap(pixmap)
+        drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
+
+        # Execute drag
+        drag.exec(Qt.MoveAction | Qt.CopyAction)
+
+    def dragEnterEvent(self, event):
+        """Handle drag enter events."""
+        if event.mimeData().hasFormat("application/x-oligotools-treeitem"):
+            event.setDropAction(Qt.MoveAction)
+            event.accept()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        """Handle drag move events to provide visual feedback."""
+        if not event.mimeData().hasFormat("application/x-oligotools-treeitem"):
+            event.ignore()
+            return
+
+        # Get the item under the cursor
+        item = self.itemAt(event.pos())
+
+        if item:
+            # Check if this is a valid drop target (must be a folder)
+            file_ref = item.data(0, Qt.UserRole)
+
+            # It's a folder if it doesn't have file_ref data or if it's the root
+            is_folder = not file_ref or not hasattr(file_ref, 'file_type')
+
+            if is_folder:
+                # Valid drop target - accept
+                event.setDropAction(Qt.MoveAction)
+                event.accept()
+
+                # Optionally expand the folder on hover
+                if not item.isExpanded():
+                    self.expandItem(item)
+            else:
+                # Can't drop on a file
+                event.ignore()
+        else:
+            # Dropping on empty space - could mean root
+            event.setDropAction(Qt.MoveAction)
+            event.accept()
+
+    def dropEvent(self, event):
+        """Handle drop events to execute file moves."""
+        if not event.mimeData().hasFormat("application/x-oligotools-treeitem"):
+            event.ignore()
+            return
+
+        # Get drop target
+        target_item = self.itemAt(event.pos())
+
+        # Determine target folder path
+        if not target_item:
+            # Dropped on empty space - use root
+            target_path = "Root"
+        else:
+            # Check if target is a folder
+            file_ref = target_item.data(0, Qt.UserRole)
+            is_folder = not file_ref or not hasattr(file_ref, 'file_type')
+
+            if is_folder:
+                target_path = self._get_item_path(target_item)
+            else:
+                # Dropped on a file - use its parent folder
+                if target_item.parent():
+                    target_path = self._get_item_path(target_item.parent())
+                else:
+                    target_path = "Root"
+
+        # Parse drag data
+        try:
+            json_data = bytes(event.mimeData().data("application/x-oligotools-treeitem")).decode()
+            drag_data = json.loads(json_data)
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            QMessageBox.warning(self, "Drop Error", f"Invalid drag data: {e}")
+            event.ignore()
+            return
+
+        # Process each dragged item
+        moved_count = 0
+        errors = []
+
+        for item_data in drag_data:
+            if item_data['type'] != 'file':
+                continue
+
+            source_path = item_data['source_path']
+            file_name = item_data['name']
+
+            # Skip if source and target are the same
+            if source_path == target_path:
+                continue
+
+            # Execute the move
+            result = self.main_window.app_service.move_file_in_project(
+                source_path=source_path,
+                file_name=file_name,
+                dest_path=target_path
+            )
+
+            if result.success:
+                moved_count += 1
+            else:
+                errors.append(f"{file_name}: {result.error}")
+
+        # Show results
+        if moved_count > 0:
+            if moved_count == 1 and len(drag_data) == 1:
+                self.main_window._show_success(f"File moved to '{target_path}'")
+            else:
+                self.main_window._show_success(f"Moved {moved_count} file(s) to '{target_path}'")
+
+            # Refresh the tree
+            self.main_window._update_ui_state()
+
+        if errors:
+            error_msg = "Some files could not be moved:\n\n" + "\n".join(errors)
+            QMessageBox.warning(self, "Move Errors", error_msg)
+
+        event.setDropAction(Qt.MoveAction)
+        event.accept()
 
     def _show_context_menu(self, position: QPoint):
         """Show context menu for tree items."""
@@ -283,7 +500,8 @@ class ContentViewer(QWidget):
             "• Sequence files (FASTA, etc.)\n"
             "• Analysis results\n"
             "• Tool outputs\n"
-            "• File previews"
+            "• File previews\n\n"
+            "Tip: You can drag and drop files to move them between folders!"
         )
         self.content_area.setReadOnly(True)
         layout.addWidget(self.content_area)
@@ -494,7 +712,8 @@ class MainWindow(QMainWindow):
                     "Once you have a project open, you can:\n"
                     "• Import sequence files\n"
                     "• Create folders to organize your files\n"
-                    "• Run analysis tools on your sequences"
+                    "• Run analysis tools on your sequences\n"
+                    "• Drag and drop files to move them between folders"
                 )
             else:
                 # Show folder information
@@ -520,6 +739,8 @@ class MainWindow(QMainWindow):
                             content += "Files:\n"
                             for file_name, file_ref in folder.files.items():
                                 content += f"  📄 {file_name} ({file_ref.file_type}, {file_ref.size_bytes} bytes)\n"
+
+                        content += "\nTip: Drag files to this folder to move them here!"
 
                         self.content_viewer.content_area.setPlainText(content)
                     except Exception as e:
